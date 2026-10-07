@@ -98,7 +98,7 @@ Because $e^{-\infty} = 0$:
 
 $$P(w_k) = \frac{0}{\sum_{j=1}^{V} e^{z_j}} = 0$$
 
-Under greedy decoding ($\text{argmax}(\mathbf{z})$), the model **cannot pick token $k$ under any circumstance**. It is mathematically impossible.
+Under greedy decoding (argmax), the model **cannot pick token $k$ under any circumstance**. It is mathematically impossible.
 
 ---
 
