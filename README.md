@@ -4,6 +4,10 @@
 
 A high-reliability, deterministic function-calling engine for local Small Language Models (`Qwen/Qwen3-0.6B`). This project translates natural language prompts into strictly typed JSON function calls using **Constrained Decoding** at the logit level, guaranteeing 100% schema compliance without relying on prompt-engineering heuristics.
 
+<p align="center">
+  <img src="docs/constrained_decoding_pipeline.gif" alt="LLM Constrained Decoding Pipeline" width="100%">
+</p>
+
 ---
 
 ## 1. Description
@@ -165,7 +169,16 @@ uv run python -m src \
 3. **Pydantic v2 Ingestion Boundary**:
    Incoming function schemas and input prompts are validated at load time (`src/models.py`). Any missing schema keys or corrupt payloads fail fast before initializing the model.
 
-4. **POSIX Error Handling Discipline**:
+4. **Mypy Optimization via Targeted Overrides**:
+   Because `llm_sdk` imports `torch` and `transformers`, standard `mypy --strict` recursively crawled **5,186 third-party modules**, causing a **71-second** cold-cache run. Adding targeted overrides in `pyproject.toml`:
+   ```toml
+   [[tool.mypy.overrides]]
+   module = ["torch.*", "transformers.*", "huggingface_hub.*"]
+   follow_imports = "skip"
+   ```
+   reduced cold-cache linting to **9.1 seconds** (87% faster) and warm-cache linting to **0.78 seconds**, while preserving 100% strict checking on all source code.
+
+5. **POSIX Error Handling Discipline**:
    - Missing CLI flags: handled by `argparse`, prints usage to `stderr`, exits with code `2`.
    - Nonexistent files or corrupted JSON: handled by `loader.py`, prints clean message to `stderr`, exits with code `1`.
    - Empty input prompt lists (`[]`): handled cleanly, serializes `[]` to output, exits with code `0`.
@@ -191,13 +204,13 @@ uv run python -m src \
    - *Problem*: Querying isolated parameters caused the model to reuse the first argument for subsequent arguments (e.g., `a=2, b=2`).
    - *Solution*: Developed Cumulative Context prompting (`Call: fn_name(a=val, b=`), utilizing causal attention to suppress already-bound tokens.
 
-2. **BPE Closing-Delimiter Fusion**:
-   - *Problem*: In BPE vocabularies, closing quotes are often merged with preceding punctuation into a single composite token (e.g., `'!")'`). Discarding stop tokens on detection caused trailing punctuation like exclamation marks to be lost in templates.
-   - *Solution*: Retained the stop token during string generation and cleanly sliced at the closing quote boundary (`raw_text.split('"')[0]`), preserving all preceding characters.
+2. **BPE Byte Fallback Artifacts**:
+   - *Problem*: Directly joining raw vocabulary strings produced encoding artifacts (`Ġ`, `Ċ`) and Windows console encoding crashes.
+   - *Solution*: Retained generated token IDs as integers and decoded them through `model.decode(generated_ids)`.
 
-3. **Surface Representation & Casing Alignment**:
-   - *Problem*: Small models inherently capitalize proper nouns (e.g., generating `Shrek` when the user prompt explicitly requested lowercase `shrek`), or fail to differentiate between Python `int` and `float` return types.
-   - *Solution*: Implemented query-guided casing alignment (`align_word_casing`) to match the user prompt's exact surface form, alongside strict schema-driven type parsing (`integer` vs `number`).
+3. **Outer-Edge Delimiter Sanitization**:
+   - *Problem*: Extracted strings retained wrapping quotes or punctuation (e.g., `'hello',`).
+   - *Solution*: Built multi-character boundary strip sets (`" \t\n\r,\"')"`), cleanly isolating semantic content.
 
 ---
 
@@ -270,13 +283,14 @@ uv run python -m src
 ## 10. Resources
 
 ### References
+- **Project Documentation**: [`docs/constrained_decoding_guide.md`](docs/constrained_decoding_guide.md) — Comprehensive technical breakdown, regex primitives, mathematical logit masking, and execution traces.
 - **Constrained Decoding**: Willard & Louf (2023), *Efficient Guided Generation for Large Language Models*.
 - **Trie Data Structures**: Fredkin, E. (1960), *Trie Memory*. Communications of the ACM.
 - **Byte Pair Encoding (BPE)**: Sennrich et al. (2016), *Neural Machine Translation of Rare Words with Subword Units*.
 - **Pydantic Documentation**: [Pydantic v2 Documentation](https://docs.pydantic.dev/latest/)
 
 ### AI Assistance Disclosure
-In accordance with 42 AI guidelines, AI assistance was used for :
+In accordance with 42 AI guidelines, AI assistance was used as an interactive senior engineer, architectural reviewer, and mentor:
 - **Architecture & Concept Design**: Explored constrained decoding strategies, Prefix Trie mechanics, and logit manipulation.
 - **Review & Quality Assurance**: Verified PEP 257 docstring compliance, `flake8` clean checks, and strict `mypy` typing.
 - **Author Ownership**: All Python code in `src/` was authored, tested, and verified directly by the user.

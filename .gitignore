@@ -24,3 +24,6 @@ data/output/
 .env
 .cache/
 huggingface_cache/
+
+# Local evaluation & test harness
+moulinette/

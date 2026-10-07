@@ -131,7 +131,7 @@ def clean_string_delimiters(raw_text: str) -> str:
     Returns:
         Sanitized string with trailing syntax and outer quotes stripped.
     """
-    sliced = raw_text.split('"')[0]
+    sliced = raw_text.split('",')[0].split('")')[0]
     return sliced.strip(" \t\n\r\"'")
 
 
@@ -220,7 +220,6 @@ def extract_single_argument(
     fn_name: str,
     param_name: str,
     param_type: str,
-    fn_desc: str = "",
     prev_args: str = "",
     max_tokens: int = 35,
 ) -> Any:
@@ -233,7 +232,6 @@ def extract_single_argument(
         fn_name: Name of the selected function.
         param_name: Name of the parameter to extract.
         param_type: Expected schema type ('number', 'integer', 'string').
-        fn_desc: Schema description of the function.
         prev_args: Already extracted arguments formatted as prefix.
         max_tokens: Maximum tokens to generate for this argument.
 
@@ -241,9 +239,7 @@ def extract_single_argument(
         Extracted and sanitized Python value.
     """
     quote = '"' if param_type == "string" else ""
-    desc_prefix = f"Task: {fn_desc}\n" if fn_desc else ""
-    call_prefix = f"Call: {fn_name}({prev_args}{param_name}={quote}"
-    prompt = f"{desc_prefix}User: {query}\n{call_prefix}"
+    prompt = f"User: {query}\nCall: {fn_name}({prev_args}{param_name}={quote}"
 
     input_ids: list[int] = model.encode(prompt).tolist()[0]
     generated_ids: list[int] = []
@@ -267,7 +263,7 @@ def extract_single_argument(
         chosen_str = id_to_token[best_token_id]
 
         if generated_ids and any(d in chosen_str for d in stop_delimiters):
-            if param_type == "string":
+            if param_type == "string" and chosen_str.startswith(")"):
                 generated_ids.append(best_token_id)
             break
 
@@ -319,7 +315,6 @@ def extract_arguments(
             fn_name=fn_def.name,
             param_name=param_name,
             param_type=param_def.type,
-            fn_desc=fn_def.description,
             prev_args=prev_args,
         )
         parameters[param_name] = value
